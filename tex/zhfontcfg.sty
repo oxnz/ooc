@@ -1,0 +1,67 @@
+% xetex/xelatex 字体设置宏包
+
+\ProvidesPackage{zhfontcfg}  
+\usepackage[cm-default]{fontspec} %[cm-default]选项主要用来解决使用数学环境时数学符号不能正常显示的问题
+\usepackage{xunicode,xltxtra}  
+\defaultfontfeatures{Mapping=tex-text} %如果没有它，会有一些 tex 特殊字符无法正常使用，比如连字符。  
+% 中文断行  
+\XeTeXlinebreaklocale "zh"  
+\XeTeXlinebreakskip = 0pt plus 1pt minus 0.1pt  
+%将系统字体名映射为逻辑字体名称，主要是为了维护的方便  
+\newcommand\fontnamewenquanyi{WenQuanYi Micro Hei Mono}
+\newcommand\fontnamefangsong{FangSong}
+\newcommand\fontnameyahei{Microsoft YaHei}  
+\newcommand\fontnamehei{SimHei}  
+\newcommand\fontnamesong{SimSun}  
+\newcommand\fontnamekai{楷体}  
+%English Fonts
+\newcommand\fontnamemono{DejaVu Sans Mono}  
+\newcommand\fontnameroman{Times New Roman}  
+\newcommand\fontnamelucida{Lucida Console}
+\newcommand\fontnamecourier{Courier New}
+\newcommand\fontnamemeiryo{Meiryo UI}
+%%设置常用中文字号，方便调用  
+\newcommand{\erhao}{\fontsize{22pt}{\baselineskip}\selectfont}  
+\newcommand{\xiaoerhao}{\fontsize{18pt}{\baselineskip}\selectfont}  
+\newcommand{\sanhao}{\fontsize{16pt}{\baselineskip}\selectfont}  
+\newcommand{\xiaosanhao}{\fontsize{15pt}{\baselineskip}\selectfont}  
+\newcommand{\sihao}{\fontsize{14pt}{\baselineskip}\selectfont}  
+\newcommand{\xiaosihao}{\fontsize{12pt}{\baselineskip}\selectfont}  
+\newcommand{\wuhao}{\fontsize{10.5pt}{\baselineskip}\selectfont}  
+\newcommand{\xiaowuhao}{\fontsize{9pt}{\baselineskip}\selectfont}  
+\newcommand{\liuhao}{\fontsize{7.5pt}{\baselineskip}\selectfont}  
+%设置文档正文字体为宋体  
+\setmainfont[BoldFont=\fontnamehei]{\fontnamesong}  
+\setsansfont[BoldFont=\fontnamehei]{\fontnamekai}  
+\setmonofont{\fontnamemono}  
+%文泉驿
+\newfontinstance\WENQUANYI{\fontnamewenquanyi}
+\newcommand{\wenquanyi}[1]{{\WENQUANYI#1}}
+%楷体  
+\newfontinstance\KAI {\fontnamekai}  
+\newcommand{\kai}[1]{{\KAI#1}}  
+%黑体
+\newfontinstance\HEI{\fontnamehei}  
+\newcommand{\hei}[1]{{\HEI#1}}  
+%雅黑  
+\newfontinstance\YAHEI{\fontnameyahei}  
+\newcommand{\yahei}[1]{{\YAHEI#1}}  
+%
+%宋体
+\newfontinstance\SONG{\fontnamesong}
+\newcommand{\song}[1]{{\SONG#1}}
+%仿宋
+\newfontinstance\FANGSONG {\fontnamefangsong}  
+\newcommand{\fangsong}[1]{{\FANGSONG#1}}  
+%英文  
+\newfontinstance\ROMAN{\fontnameroman}  
+\newcommand{\newroman}[1]{\,{\ROMAN#1}\,}
+%Lucida Console
+\newfontinstance\LUCIDA{\fontnamelucida}  
+\newcommand{\lucida}[1]{\,{\LUCIDA#1}\,}
+%Courier New
+\newfontinstance\COURIER{\fontnamecourier}  
+\newcommand{\courier}[1]{\,{\COURIER#1}\,}
+%Meiryo UI
+\newfontinstance\MEIRYO{\fontnamemeiryo}  
+\newcommand{\meiryo}[1]{\,{\MEIRYO#1}\,}

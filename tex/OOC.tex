@@ -1,0 +1,93 @@
+\documentclass[a4paper, 12pt]{book}
+\usepackage[colorlinks,linkcolor=blue,anchorcolor=blue,citecolor=green,CJKbookmarks=true]{hyperref}
+\usepackage{fontspec,xltxtra,xunicode}
+\usepackage{xeCJK}
+\setCJKmainfont[BoldFont={STHeiti},ItalicFont={STKaiti}]{STSong}
+\setmainfont{Times New Roman}
+\setCJKsansfont[BoldFont={STHeiti}]{STXihei}
+\setsansfont{Helvetica}
+\setCJKmonofont{STFangsong}
+\setmonofont{Courier New}
+\usepackage{indent first}
+\usepackage{color}
+\usepackage[
+			margin=0in,
+			left=1.25in,
+			right=1.25in,
+			top=1in,
+			bottom=1.5in
+	]{geometry}
+\usepackage[center,pagestyles]{titlesec}
+\renewcommand\contentsname{目录}
+\renewcommand\chaptername{第{\thechapter}章}
+\newcommand{\sectionname}{节}
+\renewcommand\bibname{参考文献}
+\renewcommand{\figurename}{图}
+\renewcommand{\tablename}{表}
+\titleformat{\chapter}[block]{\center\Large\bf}{\chaptername}{20pt}{}
+\titleformat{\section}[block]{\large\bf}{\thesection}{10pt}{}
+\newpagestyle{mystyle}{
+	\sethead[~\thechapter~~\chaptertitle~   ~\sectiontitle~][][\thepage]
+	{\thepage}{}{第~\thesection~节~~~\sectiontitle}
+	\setfoot[][][]
+	{}{}{}
+}
+\pagestyle{mystyle}
+\usepackage{listings}
+\lstset{
+	language=[ANSI]{C},
+	basicstyle=\ttfamily\footnotesize,				% 基本字体的字号
+	backgroundcolor=\color[RGB]{245,245,244},		% 背景色 需要 \usepackage{color} 
+	breakatwhitespace=false,		% 断行只在空格处 
+	breaklines=true,	% 自动断行 
+	captionpos=b, 		% 标题位置 
+	commentstyle=\slshape\color[RGB]{0,96,96},
+	directivestyle=\color{blue},
+	extendedchars=false,
+	escapeinside=`` , % 添加注释，暂时离开 listings
+	framerule=0pt,
+	%identifierstyle=\color{red},
+	keywordstyle=\color{blue},
+	morekeywords={*,define,*,include...},
+	numbers=left,						% 行号位置
+	numbersep=5pt,					%行号与代码间距 
+	%stepnumber=2,						%行号的显示步长 
+	numberstyle=\tt\tiny\color[RGB]{0,192,192},			% 行号字体的字号 
+	rulesepcolor=\color[RGB]{20,20,20},
+	showspaces=false,					%显示空格 
+	showstringspaces=false,				% 字符串中显示空格 
+	showtabs=false,
+	stringstyle=\slshape\color[RGB]{128,0,0},
+	tabsize=4,
+	title=\lstname
+}
+\usepackage{graphicx}
+\XeTeXlinebreaklocale “zh”
+\XeTeXlinebreakskip = 0pt plus 1pt minus 0.1pt 	%文章内中文自动换行
+
+\linespread{1.2}	% 设置行距
+\setlength{\parindent}{2em}
+\setlength{\parskip}{1ex plus 0.5ex minus 0.2ex}
+
+\title{使用ANSI-C进行面向对象编程}
+\author{张盼}
+\begin{document}
+
+\maketitle
+
+\frontmatter
+\include{preface0x01}	%译者序
+\include{preface0x02}	%原书前言
+
+\mainmatter
+
+
+\tableofcontents
+
+\include{chapter0x01}
+\include{chapter0x04}
+\include{chapter0x05}
+
+\appendix
+
+\end{document}

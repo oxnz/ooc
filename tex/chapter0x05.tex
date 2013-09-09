@@ -1,0 +1,454 @@
+\chapter{编程经验--符号表}
+
+一个结构体明智的加长，以此来共享基本结构的功能，可以帮助省去笨重的union的使用。特别在具有动态绑定，我们得到了一种统一的且完美健壮的方式处理消息传递。一旦基本机制就位，一个新的扩展类就可以重用基本代码容易的添加。
+
+作为一个例子，我们将会添加关键字、常量、变量和数学函数到第三章开始的小计算器中。所有这些对象存在一个符号表中并且共享相同的名称搜索技术。
+
+\section{扫瞄标识符}
+
+在3.2节中我们实现了函数\verb|scan()|，从主程序获取一行输入并在每次调用返回一个输入符号。如果我们想引进关键字，命名常量等等，我们需要扩展\verb|scan()|。像浮点数一样，我们提取字符数字串以供深入分析：
+
+\begin{lstlisting}
+
+	#define ALNUM	"ABCDEFGHIJKLMNOPQRSTUVWXYZ" \
+					"abcdefghijklmnopqrstuvwxyz" \
+					"_" "0123456789"
+	
+	static enum tokens scan (const char * buf) {
+		static const char * bp;
+		…
+		if (isdigit(* bp) || * bp == '.')
+			…
+		else if (isalpha( *bp) || *bp == '_') {
+			char buf[BUFSIZ];
+			int len = strspn(bp, ALNUM);
+			
+			if (len >= BUFSIZ)
+				error("name too long: %-.10s…", bp);
+			
+			strncpy(buf, bp, len), buf[len] = '\0', bp += len;
+			token = screen(buf);
+		}
+		...
+
+\end{lstlisting}
+
+一旦我们有了一个标识符，我们让新函数\verb|screen()|来决定它的token值应当是什么。如果有必要，\verb|screen()|将会存放一个解析器可以识别的符号描述到全局变量symbol中。
+
+\section{使用变量}
+
+一个变量参与两个操作：它的值被用作一个表达式的操作数，或者表达式的赋值对象。第一中操作是对3.5节中一个简单的\verb|factor()|扩展。
+
+\begin{lstlisting}
+static void * factor (void) {
+	void * result;
+	...
+	switch (token) {
+		case VAR:
+			result = symbol;
+			break;
+		...
+\end{lstlisting}
+
+VAR是一个当\verb|screen()|发现适当的标识符的时候放到token中的唯一值。有关标识符的附加信息被放到全局变量symbol中。在这种情况下，symbol包含一个节点来标示变量作为表达式树中的一个叶子。\verb|screen()|要么找到变量再符号表中或者使用描述Var去创建它。
+
+识别一个赋值有点复杂。如果我们的计算器允许如下两种语法的声明，它将会是舒适的：
+
+\begin{lstlisting}
+asgn : sum
+	 | VAR = asgn
+\end{lstlisting}
+
+不幸的是，VAR也可以出现在sum的左端，也就是说，使用我们递归下降的技术如何识别C风格嵌入赋值不是立即就能清楚的。\footnote{这里有一个技巧：对sum做简单尝试。如果返回是下一个输入符号是=，sum必定是一个变量叶子节点，我们就可以创建这个赋值。}因为我们想要学到如何操作关键字，我们设置如下的语法：
+
+\begin{lstlisting}
+stmt  : sum
+	| LET VAR = sum
+\end{lstlisting}
+
+这被翻译成如下函数：
+
+\begin{lstlisting}
+static void * stmt (void) {
+	void * result;
+	
+	switch (token) {
+		case LET:
+			if (scan(0) != VAR)
+				error("bad assignment");
+			result = symbol;
+			if (scan(0) != '=')
+				error("expecting =");
+			scan(0);
+			return new(Assign, result, sum());
+		default:
+			return sum();
+	} /* this i s comet */
+}
+\end{lstlisting}
+
+在主程序中我们调用stmt()来替代sum()，并且我们的识别器已经准备好操作变量。Assign是一个新的类型描述，来计算一个sum的值并赋值给一个变量。
+
+\section{筛子--Name}
+
+赋值具有如下语法：
+
+\begin{lstlisting}
+stmt : sum
+     | LET VAR = sum
+\end{lstlisting}
+
+LET是关键字的一个例子。在构建筛子的过程中我们仍然可以决定什么标识符将标示\verb|LET: scan()|从输入行提取一个标识符并传递给\verb|screen()|，是它在符号表中查找并返回token的适当值，至少一个变量，一个节点在symbol中。
+
+识别器丢弃LET但是插入变量作为叶子节点在树中。对于另一个符号，例如一个算数函数的名称，我们可能想要适用\verb|new()|到screener返回的符号来获取一个新的节点。因此，我们的符号表入口应当对与大部分具有相同的函数动态绑定与我们树节点。
+
+对于一个关键字，一个Name需要包含输入字符串和token值。稍后我们想要继承Name；因此，我们定义结构在Name.r中：
+
+\begin{lstlisting}
+struct Name {			/* base structure */
+	const void * type;	/* for dynamic linkage */
+	const char * name;	/* may be malloc-ed */
+	int token;
+};
+\end{lstlisting}
+
+我们的符号从不死亡：他们的名字是预定义的常量字符串还是存储的用户自定义变量动态字符串是没有关系的--我们将不会回收他们。
+
+在我们可以定义一个符号之前，我们需要输入它到符号表。这不能通过调用\verb|new(Name, ...)|来处理，因为我们想要支持更多比Name复杂的符号，并且我们想要隐藏符号表的实现。相反的，我们提供一个函数\verb|install()|，它需要一个Name对象并把它插入到符号表中。这里给出符号表接口文件Name.h：
+
+\begin{lstlisting}
+extern void * symbol;	/* -> last Name found by screen() */
+void install (const void * symbol);
+int screen (const char * name);
+\end{lstlisting}
+
+识别器必须插入像LET的关键字到符号表中，在他们被screener发现之前。这些关键字可以被定义进一个常量表结构中--它对\verb|install()|没有影响。下面的函数被用来初始化识别：
+
+\begin{lstlisting}
+#include "Name.h"
+#include "Name.r"
+
+static void initName (void) {
+	static const struct Name names [] = {
+		{ 0, "let", LET },
+		0
+	};
+	const struct Name * np;
+	
+	for (np = names; np->name; ++np)
+		install(np);
+}
+\end{lstlisting}
+
+注意\verb|names[]|，关键字表，不需要被存储。我们适用Name的标示来定义\verb|names[]|，也就是说，我们包含Name.r。由于关键字LET被丢弃，我们不提供动态绑定的方法。
+
+\section{父类的实现--Name}
+
+通过名字搜索符号是一个标准问题。不幸的是，ANSI标准没有定义一个合适的库函数来解决它。\verb|bsearch()|--有序表中的二分查找--比较接近，但是如果我们想要插入一个单独的新符号，我们不得不调用\verb|qsort()|来设置阶段给后续搜索。
+
+UNIX系统很可能提供两三个函数家族来处理动态增长表。\verb|lsearch()|--线性搜索一个数组并在\verb|end(!)|添加--不是完全高校的。\verb|hsearch()|--一个结构体哈希表由一个文本和一个信息指针组成--维护一个固定大小的表并且强制一个尴尬的结构体入口。\verb|tsearch()|--一个二叉树具有任意比较和删除--是最常用的家族但是很没有效率，如果初始符号从一个有序序列中安装。
+
+在一个UNIX系统上，\verb|tsearch()|有可能是最好的折衷。对于一个可移植的实现具有二元线程树可以在\verb|[Sch87]|找到。然而，如果这个家族不可用，或者如果我们不能保证一个随机的初始化，我们应当查看一个简单的设备来实现。一个小心实现的\verb|bsearch()|可以很容易的被扩展来支持存储的数组插入：
+
+\begin{lstlisting}
+void * binary (const void * key,
+	void * _base, size_t * help, size_t width,
+	int (* cmp) (const void * key, const void * elt)) {
+	size_t nel = * nelp;
+#define base	(* (char **) & _base)
+	char * lim = base + nel * width, * high;
+
+	if (nel > 0) {
+		for (high = lim - width; base <= high; nel >>= 1) {
+			char * mid = base + (nel >> 1) * width;
+			int c = cmp(key, mid);
+
+			if (c < 0)
+				high = mid - width;
+			else if (c > 0)
+				base = mid + width, --nel;
+			else
+				return (void *) mid;
+		}
+\end{lstlisting}
+
+到这里为止，这是一个任意数组的二元搜索。key只想要找的对象；base初始值是一个具有\verb|*nelp|个元素的表的开始位置，每个元素width字节；并且cmp是一个函数用来比较key和一个表中的元素。在此我们要么找到一个元素并返回它的位置，要么base现在是key应当出现在表中的位置地址。我们继续如下：
+
+\begin{lstlisting}
+		memmove(base + wdith, base, lim - base);
+	}
+	++ * nelp;
+	return memcpy(base, key, width);
+#undef base
+}
+\end{lstlisting}
+
+\verb|memmove()|移动数组的末尾\footnote{\verb|memmove()|复制字节即使源和目标区域重叠；\verb|memcpy()|并不如此，但是它更具效率}，\verb|memcpy()|插入key。我们假定数组之外还有空间并且我们通过nelp纪录我们已经加入了一个元素--\verb|binary()|和标准函数\verb|bsearch()|只需要地址而不是变量的值包含饿了表中元素的个数。
+
+给出一个通用搜索和入口的方式，我们可以很轻易的管理我们的符号表。首先我们需要比较一个key和表中的元素：
+
+\begin{lstlisting}
+static int cmp (const void * _key, const void * _elt) {
+	const char * const * key = _key;
+	const struct Name * const * elt = _elt;
+
+	return strcmp(* key, (* elt) -> name);
+}
+\end{lstlisting}
+
+作为一个键值，我们只传递一个指向输入符号文本的指针的地址。表中的元素当然是Name 结构体，并且我们只查看他们的\verb|.name|成员。
+
+搜索和入口通过适用适当的参数对\verb|binary()|进行调用来实现。由于我们事先不知道符号个数，我们确保一直有空间让我们扩招表：
+
+\begin{lstlisting}
+static struct Name ** search (const char ** name) {
+	static const struct Name ** names;	/* dynamic table */
+	static size_t used, max;
+
+	if (used >= max) {
+		names = names
+			? realloc(names, (max *= 2) * sizeof * names)
+			: malloc((max = NAMES) * sizeof * names);
+		assert(names);
+	}
+	return binary(name, names, & used, sizeof * names, cmp);
+}
+\end{lstlisting}
+
+NAMES是一个定义的常量具有初始分配的表项；每次我们用完，我们都是表的大小加倍。
+
+\verb|search()|适用指向要查找的文本的地址指针作为参数并且返回表项的地址。如果文本未找到，\verb|binary()|就插入key--也就是说，只有指向文本的指针，而不是一个struct Name--到表中。这个策略是为了\verb|screen()|的利益，它只新建一个表元素，如果一个输入中的标识符是未知的：
+
+\begin{lstlisting}
+int screen (const char * name) {
+	struct Name ** pp = search(& name);
+
+	if (* pp == (void *) name)	/* entered name */
+		* pp = new(Var, name);
+	symbol = * pp;
+	return (* pp) -> token;
+}
+\end{lstlisting}
+
+\verb|screen()|让\verb|search()|查找要显示的输入符号。如果指符号文本的指针被插入符号表，我们需要使用一个新标识符的项目描述替换它。
+
+对于\verb|screen()|，一个新的标识符必须是一个变量。我们假定这里有一个类型描述Var知道如何构建Name结构体来描述变量并且我们让\verb|new()|做剩下的工作。其他的情况，我们让symbol指向符号表项并且返回它的\verb|.token|值。
+
+\begin{lstlisting}
+void install (const void * np) {
+	const char * name = ((struct Name *) np) -> name;
+	struct Name ** pp = search(& name);
+
+	if (* pp != (void *) name)
+		error("cannot install name twice: %s", name);
+	* pp = (struct Name *) np;
+}
+\end{lstlisting}
+
+\verb|install()|比较简单。我们接受一个Name对象并且让\verb|search()|在符号表中找到它。\verb|install()|被假定来只处理新符号，所以我们应当总是能够插入对象替换它的名字。否则，如果\verb|search()|真的找到一个符号，我们就有麻烦了。
+
+\section{子类的事先--Var}
+
+\verb|screen()|调用\verb|new()|来创建一个新的变量符号并且返回它到识别器，并插入它到一个表达式树中。因此，Var必须创建可以项节点行为的符号表项，也就是说，当定义struct Var的时候，我们需要扩展一个struct Name来继承在符号表中存在的能力并且我们必须支持动态绑定的函数可以适用于表达式节点。我们描述接口在Var.h中:
+
+\begin{lstlisting}
+const void * Var;
+const void * Assign;
+\end{lstlisting}
+
+一个变量具有一个名字和一个值。如果我们计算一个算术表达式的值，我们需要返回\verb|.value|成员。如果我们删除一个表达式，我们一定不能删除变量节点，因为它存活在符号表中：
+
+\begin{lstlisting}
+struct Var { struct Name _; double value; };
+#define value(tree) (((struct Var *) tree) -> value)
+
+static double doVar (const void * tree) {
+	return value(tree);
+}
+
+static void freeVar (void * tree) {
+}
+\end{lstlisting}
+
+就如在4.6节中讨论的，通过提供一个值的访问函数来简化代码。
+
+创建一个变量需要分配一个struct Var，插入一个变量名的动态副本，并且标识值VAR被识别器规定：
+
+\begin{lstlisting}
+static void * mkVar (va_list ap) {
+	struct Var * node = calloc(1, sizeof(struct Var));
+	const char * name = va_arg(ap, const char *);
+	size_t len = strlen(name);
+
+	assert(node);
+	node-> _.name = malloc(len + 1);
+	assert(node -> _.name);
+	strcpy((void *) node-> _.name, name);
+	node -> _.token = VAR;
+	return node;
+}
+
+static struct Type _Var = { mkVar, doVar, freeVar };
+
+const void * Var = & _Var;
+
+\verb|new()|照料插入Var类型描述到节点中，在符号被\verb|screen()|返回之前或者任何的使用。
+
+就技术而言，\verb|mkVar()|是Name的构建子。然而，只有变量名需要被动态存储。因为饿哦我们决定在我们的计算器中构建子负责分配一个对象，我们不能让Var构建子调用一个Name构建子来维护\verb|.name|和\verb|.token|成员--一个Name构建子将会分配一个struct Name而不是一个struct Var。
+
+\section{赋值}
+
+赋值是一个二元操作。识别器保证我们具有一个变量作为做操作数和sum作为右操作数。因此，我们世纪需要实现的是实际赋值操作，也就是说，动态绑定进类型描述的\verb|.exec|成员：
+
+\begin{lstlisting}
+#include "value.h"
+#include "value.r"
+
+static double doAssign (const void * tree) {
+	return value(left(tree)) = exec(right(tree));
+}
+
+static struct Type _Assign = { mkBin, doAssign, freeBin };
+const void * Assign = & _Assign;
+\end{lstlisting}
+
+我们共享Bin的构建子和析构子，因此，在算数操作的实现中必须是全局的。我们也共享struct Bin和访问函数\verb|left()|和\verb|right()|。所有这些使用value.h导出并且实现文件value.r。我们自己的访问函数\verb|value()|对于struct Var故意的允许修改，如此赋值就可以被很优雅的实现。
+
+\section{另一个子类--常量}
+
+谁会喜欢输入\pi或者其他数学常量的值呢？我们从Kernighan和Pike\'s hoc\[K&P84\]得到线索并且预定义一些常量给我们的计算器。下面的函数需要被调用在初始化识别器期间：
+
+\begin{lstlisting}
+void initConst (void) {
+	static const struct Var constants [] = {	/* like hoc */
+		{ &_Var, "PI", CONST, 3.14159265358979323846 },
+		...
+		0 };
+	const struct Var * vp;
+
+	for (vp = constants; vp -> _.name; ++ vp)
+		install(vp);
+}
+\end{lstlisting}
+
+变量和常量几乎是一样的：都具有名称和值并且存活在符号表中；都返回他们的值在一个算数表达式的使用中；并且都不应当被删除，当我们删除一个算数表达式的时候。然而，我们不应当给常量赋值，所以我们需要同意一个新的标识符值CONST，识别器在\verb|factor()|中接受就像VAR一样，但是不允许在\verb|stmt()|的赋值的左边。
+
+\section{数学函数--Math}
+
+ANSI-C定义了许多数学函数例如sin(),sqrt(),exp()等等。作为另一个继承的练习，我们将添加库函数使用一个单个double参数并且具有一个double结构到我们的计算器。
+
+这些函数工作的就如同一元运算符一样。我们可以定义一个新的类型给节点给每个函数并且收集大多数功能从Minus和Name类，但是这里有一个更简单的方法。我们扩展struct Name到struct Math如下：
+
+\begin{lstlisting}
+struct Math { struct Name _;
+	double (* funct) (double);
+};
+#define funct(tree) (((struct Math *) left(tree)) -> funct)
+\end{lstlisting}
+
+额外的给函数名称用于输入和标识符给识别，我们存储像\verb|sin()|的库函数的地址在符号表项中。
+
+在初始化期间我们调用下面的函数来输入所有的函数描述到符号表中：
+
+\begin{lstlisting}
+#include <math.h>
+
+void initMath (void) {
+	static const struct Math functions [] = {
+		{ &_Math, "sqrt", MATH, sqrt },
+		...
+		0 };
+	const struct Math * mp;
+
+	for (mp = functions; mp -> _.name; ++ mp)
+		install(mp);
+}
+\end{lstlisting}
+
+一个函数调用是一个因子就好像使用一个减号标记一样。对于识别我们需要扩展我们的语法对因子：
+
+\begin{lstlisting}
+factor : NUMBER
+     | - factor
+     | ...
+     | MATH ( sum )
+\end{lstlisting}
+
+MATH是公共标识符对所有函数输入通过\verb|initMath()|。这个翻译到下面的附加\verb|factor()|在识别器中：
+
+\begin{lstlisting}
+static void * factor (void) {
+	void * result;
+	...
+	switch (token) {
+		case MATH:
+		{
+			const struct Name * fp = symbol;
+
+			if (scan(0) != '(')
+				error("expecting (");
+			scan(0);
+			result = new(Math, fp, sum());
+			if (token != ')')
+				error("expecting )");
+			break;
+		}
+\end{lstlisting}
+symbol首先包含符号表元素对一个函数例如\verb|sin()|。我们保存这个指针并且构建表达式树对于函数参数通过调用\verb|sum()|。然后我们使用Math，类型描述给函数，并且让\verb|new()|构建下面的节点给表达式树：
+
+TODO插入图片
+
+我们让一个二元节点的左边只想符号表元素给函数并且我们附加参数树在右边。这个二元节点具有Math作为类型描述，也就是说，方法\verb|doMath()|和\verb|freeMath()|将会被调用来分别执行和删除节点。
+
+Math节点仍然使用\verb|mkBin()|构建，因为这个函数不关心指针的后代。\verb|freeMath()|，然而，可能只会删除右子树：
+
+\begin{lstlisting}
+static void freeMath (void * tree) {
+	delete(right(tree));
+	free(tree);
+}
+\end{lstlisting}
+如果我们仔细看上图，我们可以看到一个Math节点的执行是非常容易的。\verb|doMath()|需要调用存储在符号表中元素可以被访问的作为左后代二元节点从之被调用：
+
+\begin{lstlisting}
+static double doMath (const void * tree) {
+	double result = exec(right(tree));
+
+	errno = 0;
+	result = funct(tree)(result);
+	if (errno)
+		error("error in %s: %s",
+			((struct Math *) left(tree)) -> _.name,
+			strerror(errno));
+	return result;
+}
+\end{lstlisting}
+
+唯一的问题是抓住数字错误通过检测errno变量在ANSI-C头文件errno.h中声明。这个完成了数学函数的实现给计算器。
+
+\section{总结}
+
+机遇一个函数\verb|binary()|来搜索和插入一个有序数组，我们实现了一个符号表包含了就诶够体具有名称和标识符值。继承允许我们插入其他结构体到表中而不需要改变函数搜索和插入。这种方式的高雅变得明显一旦我们考虑一个传统的定义一个符号表元素出于我们的目的：
+
+\begin{lstlisting}
+struct {
+	const char * name;
+	int token;
+	union {			/* based on token */
+		double value;
+		double (* funct) (double);
+	} u;
+};
+\end{lstlisting}
+
+对于关键字，union是没有必要的。用户定义的函数讲会要求一个更详细的描述，并且引用union的部分是讨厌的。
+
+继承允许我们适用符号表功能到新的项而不改变已经存在的代码。动态绑定在许多方式帮助保持实现的简单性：常量符号表元素，变量和函数可以被绑定进表达式树中而不用担心我们不慎删除他们；一个执行函数参考自身值有它自己安排节点。
+
+\section{练习}
+
+新关键字是必须的用来实现例如while或者repeat循环，if语句等等。识别被\verb|stmt()|处理，但是这个对于大部分情况，只有一个问题编译器构建，而不是继承。一旦我们决定语句描述，我们将创建节点类型例如While，Repeat或者IfElse，并且关键字在符号表中不需要知道他们的存在。
+
+更有趣的是函数具有两个参数的例如\verb|atan2()|在ANSI-C数学库中。从这里看出符号表，这个函数被处理仅仅类似简单函数，但是对于表达式树我们需要开发一个新的节点类型使用三个后代。
+
+用户定义的函数具有一个现实的有意思的问题。如果我们表示单独的参数通过\$并且我们使用一个节点类型Parm来只想函数项在符号表中从那里我们可以暂时存储参数值只要我们不允许递归，就是简单的。函数具有参数名和几个参数是比较困难的，当然了。然而，这是一个好的练习inverstigate继承的好处和动态绑定的好处。我们将在第11章中返回到这个问题。
